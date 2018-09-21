@@ -2,7 +2,7 @@
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 8b85f3316bd7fd91077bcca8012b76a1814522057180aba1b5c22f386ec8e615
+-- hash: ee1335ab5896dda167b5dd6e7bf5ff2f33603f0b2cfd155692b454e910811f13
 
 name:           raytracer
 version:        0.1.0.0
@@ -26,7 +26,6 @@ source-repository head
 
 library
   exposed-modules:
-      Dupa
       Lib
       PCG
       Types

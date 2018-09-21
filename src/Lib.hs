@@ -36,7 +36,6 @@ asV3 :: Double -> V3
 asV3 a = V3 a a a
 {-# INLINE asV3 #-}
 
-
 pointAtParameter :: V3 -> V3 -> Double -> V3
 pointAtParameter !a !b !t =  a + (asV3 t) * b
 {-# INLINE pointAtParameter #-}
@@ -164,32 +163,31 @@ reflect v n = v - asV3 (2 * dot v n) * n
 
 scatter :: PCG32 -> Ray -> HitResult -> Maybe (V3, Ray)
 scatter gen ray@(Ray origin direction) (HitResult _ p normal (Lambertian albedo)) =
-  let target = p + normal + randomInUnitSphere gen
-      scattered = Ray p (target - p)
+  let scattered = Ray p (normal + randomInUnitSphere gen)
   in Just (albedo, scattered)
 
 scatter gen ray@(Ray origin direction) (HitResult _ p normal (Metal albedo fuzz)) =
   let reflected = reflect (unitVector direction) normal
       scattered = Ray p (reflected + (asV3 fuzz) * randomInUnitSphere gen)
-  in if (dot reflected normal) > 0 then Just (albedo, scattered)
-                                   else Nothing
+  in if dot reflected normal > 0 then Just (albedo, scattered)
+                                 else Nothing
 
 scatter gen ray@(Ray origin direction) (HitResult _ p normal (Dielectric refIdx)) =
   let reflected = reflect direction normal
       attenuation = asV3 1.0
 
       refract :: V3 -> V3 -> Double -> Maybe V3
-      refract v n niOverNt = 
+      refract v n niOverNt =
         let uv = unitVector v
             dt = dot uv n
             discriminant = 1.0 - niOverNt * niOverNt * (1 - dt * dt)
         in if discriminant > 0
-           then Just $ (asV3 niOverNt) * (uv - n * asV3 dt) - n * (asV3 $ sqrt discriminant)
+           then Just $ asV3 niOverNt * (uv - n * asV3 dt) - n * asV3 (sqrt discriminant)
            else Nothing
       {-# INLINE refract #-}
 
       shlick :: Double -> Double -> Double
-      shlick cosine refIdx = 
+      shlick cosine refIdx =
         let r0 = (1 - refIdx) / (1 + refIdx)
         in (r0 * r0) + (1 - r0 * r0) * (1 - cosine) ** 5
       {-# INLINE shlick #-}
@@ -221,44 +219,44 @@ randomInUnitDisk :: PCG32 -> V3
 randomInUnitDisk gen = 
   let (v1, g1) = nextD gen
       (v2, g2) = nextD g1
-      p = asV3 2 * (V3 v1 v2 0) - (V3 1 1 0)
+      !p = asV3 2 * (V3 v1 v2 0) - (V3 1 1 0)
   in if dot p p > 1
      then randomInUnitDisk g2
      else p
 {-# INLINE randomInUnitDisk #-}
 
 
-computePixels :: Ix2 -> World Sphere -> Int -> Image S RGB Double
+computePixels :: Ix2 -> World Sphere -> Int -> Image U RGB Double
 computePixels arrSz@(sizeY :. sizeX) world samples =
   compute $ toInterleaved $ makeArrayR D Par arrSz lightFunc
-  where lookFrom = V3 13 2 3
-        lookAt = V3 0 0 0
-        aperture = 0.1
-        camera = makeCamera lookFrom lookAt 
+  where !lookFrom = V3 13 2 3
+        !lookAt = V3 0 0 0
+        !aperture = 0.1
+        !camera = makeCamera lookFrom lookAt 
                             (V3 0 1 0) 20
                             ((fromIntegral sizeX) / (fromIntegral sizeY))
                             aperture
                             10
-        samplesD = fromIntegral samples
+        !samplesD = fromIntegral samples
 
-        castRay :: Int -> Int -> V3 -> Int -> V3
-        castRay i j rgb sample =
-          let 
-              idx = 2 * (i + 1) * (j + 1) * (sample + 1)
-              stdGen = newPCG32 (fromIntegral idx) (fromIntegral idx)
+        castRay :: Int -> Int -> (PCG32, V3) -> Int -> (PCG32, V3)
+        castRay !i !j (stdGen, rgb) !sample =
+          let !idx = 2 * (i + 1) * (j + 1) * (sample + 1)
               (r1, g1) = nextD stdGen
               (r2, g2) = nextD g1
               (g3, g4) = split g2
-              u = (r1 + fromIntegral i) / fromIntegral sizeX
-              v = (r2 + fromIntegral (sizeY - 1 - j)) / fromIntegral sizeY
+              (g5, g6) = split g4
+              !u = (r1 + fromIntegral i) / fromIntegral sizeX
+              !v = (r2 + fromIntegral (sizeY - 1 - j)) / fromIntegral sizeY
 
-              ray = getRay g3 u v camera
-              col = color world ray g4 0
-          in rgb + col
-
-        lightFunc arrI@(j :. i) = 
+              !ray = getRay g3 u v camera
+              !col = color world ray g5 0
+          in (g6, rgb + col)
+        {-# INLINE castRay #-}
+        !stdGen = newPCG32 (fromIntegral sizeY) (fromIntegral sizeX)
+        lightFunc (j :. i) =
         -- TODO: isn't the partially applied cast ray an issue?
-          let (V3 r g b) = L.foldl' (castRay i j) 0 [0..(samples - 1)]
+          let (_, V3 r g b) = L.foldl' (castRay i j) (stdGen, 0) [0..(samples - 1)]
           in PixelRGB (sqrt $ r / samplesD) (sqrt $ g / samplesD) (sqrt $ b / samplesD)
         {-# INLINE lightFunc #-}
 
@@ -308,5 +306,5 @@ someFunc :: IO ()
 someFunc = do          
   let stdGen = newPCG32 1337 1337
       world = generateWorld stdGen
-      img = computePixels (100 :. 200) world 100
+      img = computePixels (250 :. 500) world 100
   writeImage "light.png" img
